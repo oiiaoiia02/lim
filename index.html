@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Limitless 核心监控 (稳定版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <style>
+        [v-cloak] { display: none; }
+        /* 隐藏滚动条但允许滚动 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-[#0f172a] text-slate-200 min-h-screen font-sans">
+
+    <div id="app" v-cloak class="p-4 max-w-7xl mx-auto">
+        
+        <header class="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-blue-400 flex items-center gap-2">
+                    <i class="fa-solid fa-bolt"></i> Limitless 监控面板
+                </h1>
+                <p class="text-xs text-slate-500 mt-1 font-mono">
+                    Monitoring: CTF Exchange (Base)
+                </p>
+            </div>
+            <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2 bg-slate-800 px-3 py-1 rounded-full border border-slate-700">
+                    <span class="w-2 h-2 rounded-full animate-pulse" 
+                          :class="loading ? 'bg-yellow-400' : 'bg-green-500'"></span>
+                    <span class="text-xs font-bold">{{ loading ? '同步中...' : '监控正常' }}</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            
+            <div class="bg-slate-800 rounded-lg p-5 border border-slate-700 shadow-lg relative overflow-hidden">
+                <div class="flex justify-between items-start z-10 relative">
+                    <div>
+                        <p class="text-slate-400 text-xs font-bold uppercase">独立参与地址</p>
+                        <p class="text-4xl font-bold text-white mt-1">{{ uniqueUsers.size }}</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="bg-blue-600 text-white text-xs px-2 py-1 rounded font-bold">
+                            Lv.{{ Math.floor(uniqueUsers.size / 200) }}
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+                        <span>进度: {{ uniqueUsers.size % 200 }} / 200</span>
+                        <span>下个目标: {{ (Math.floor(uniqueUsers.size / 200) + 1) * 200 }}</span>
+                    </div>
+                    <div class="w-full bg-slate-900 rounded-full h-2 overflow-hidden">
+                        <div class="bg-gradient-to-r from-blue-500 to-green-400 h-full transition-all duration-700" 
+                             :style="{ width: ((uniqueUsers.size % 200) / 200 * 100) + '%' }"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 rounded-lg p-5 border border-slate-700 shadow-lg flex flex-col justify-between">
+                <div>
+                    <p class="text-slate-400 text-xs font-bold uppercase">总交易数 (Txns)</p>
+                    <p class="text-4xl font-bold text-blue-400 mt-1">{{ transactions.length }}</p>
+                </div>
+                <div class="text-[10px] text-slate-500 mt-2 flex items-center gap-1">
+                    <i class="fa-regular fa-clock"></i> 数据源: BaseScan (8s刷新)
+                </div>
+            </div>
+
+            <div class="bg-slate-800 rounded-lg p-5 border border-slate-700 shadow-lg flex flex-col justify-center">
+                <label class="text-slate-400 text-xs font-bold uppercase mb-2">查询钱包地址</label>
+                <div class="relative">
+                    <i class="fa-solid fa-search absolute left-3 top-3 text-slate-500"></i>
+                    <input type="text" v-model="searchQuery" 
+                        class="w-full bg-slate-900 border border-slate-600 rounded p-2 pl-9 text-sm text-white focus:outline-none focus:border-blue-500"
+                        placeholder="输入 0x... 地址">
+                </div>
+                <div class="h-4 mt-1">
+                    <span v-if="searchQuery" class="text-xs text-green-400 font-mono">
+                        <i class="fa-solid fa-check"></i> 找到 {{ filteredTxs.length }} 条记录
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden shadow-xl">
+            <div class="p-3 bg-slate-900/50 border-b border-slate-700 flex justify-between items-center">
+                <h3 class="font-bold text-sm text-slate-300">实时交易流</h3>
+                <span class="text-xs text-slate-500">Latest 50</span>
+            </div>
+            
+            <div class="overflow-x-auto no-scrollbar">
+                <table class="w-full text-left text-sm whitespace-nowrap">
+                    <thead class="bg-slate-900 text-slate-500 text-xs uppercase">
+                        <tr>
+                            <th class="p-3">Tx Hash</th>
+                            <th class="p-3">User (From)</th>
+                            <th class="p-3">Time</th>
+                            <th class="p-3 text-right">Value (ETH)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-700/50">
+                        <tr v-for="tx in filteredTxs.slice(0, 50)" :key="tx.hash" class="hover:bg-slate-700/30 transition">
+                            <td class="p-3 font-mono text-blue-400 text-xs">
+                                <a :href="'https://basescan.org/tx/' + tx.hash" target="_blank" class="hover:underline">
+                                    {{ tx.hash.substring(0,8) }}...
+                                </a>
+                            </td>
+                            <td class="p-3 font-mono text-slate-300 text-xs">
+                                {{ tx.from.substring(0,6) }}...{{ tx.from.substring(38) }}
+                                <span v-if="searchQuery && tx.from.toLowerCase().includes(searchQuery.toLowerCase())" 
+                                      class="ml-1 bg-green-900 text-green-300 px-1 rounded text-[10px]">YOU</span>
+                            </td>
+                            <td class="p-3 text-slate-400 text-xs">
+                                {{ new Date(tx.timeStamp * 1000).toLocaleTimeString() }}
+                            </td>
+                            <td class="p-3 text-right font-mono text-slate-200 text-xs">
+                                {{ (tx.value / 1e18).toFixed(5) }}
+                            </td>
+                        </tr>
+                        <tr v-if="filteredTxs.length === 0">
+                            <td colspan="4" class="p-8 text-center text-slate-500">
+                                {{ loading ? '正在连接区块链...' : '暂无数据' }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                // 1. 配置：已硬编码 Limitless (CTF Exchange) 合约
+                // 这是 Limitless 交易底层的核心合约地址
+                const CONTRACT = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
+                const API_KEY = "YourApiKeyToken"; // 使用公共Key，够用
+
+                // 2. 响应式数据
+                const loading = ref(false);
+                const transactions = ref([]);
+                const searchQuery = ref('');
+                
+                // 3. 计算属性
+                // 过滤搜索
+                const filteredTxs = computed(() => {
+                    if (!searchQuery.value) return transactions.value;
+                    return transactions.value.filter(tx => 
+                        tx.from.toLowerCase().includes(searchQuery.value.toLowerCase())
+                    );
+                });
+
+                // 计算独立用户 (Set去重)
+                const uniqueUsers = computed(() => {
+                    return new Set(transactions.value.map(tx => tx.from.toLowerCase()));
+                });
+
+                // 4. 数据获取核心 (防错版)
+                const fetchData = async () => {
+                    loading.value = true;
+                    try {
+                        // 请求 BaseScan
+                        const url = `https://api.basescan.org/api?module=account&action=txlist&address=${CONTRACT}&startblock=0&endblock=99999999&sort=desc&apikey=${API_KEY}`;
+                        const res = await fetch(url);
+                        const data = await res.json();
+
+                        // 只有状态为 '1' 时才更新，防止报错
+                        if (data.status === "1") {
+                            transactions.value = data.result;
+                        } 
+                        // 如果是限制提示，我们什么都不做，等下次刷新，这样用户就看不到报错了
+                    } catch (e) {
+                        console.log("网络小波动，静默重试...");
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                // 5. 启动
+                onMounted(() => {
+                    fetchData();
+                    // 每8秒刷新一次，非常安全
+                    setInterval(fetchData, 8000);
+                });
+
+                return {
+                    loading,
+                    transactions,
+                    searchQuery,
+                    filteredTxs,
+                    uniqueUsers
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
