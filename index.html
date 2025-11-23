@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Limitless 监控 (V2专享版)</title>
+    <title>Limitless 监控 (V2 诊断版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
@@ -12,8 +12,6 @@
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-        .fade-enter-active, .fade-leave-active { transition: opacity 0.5s; }
-        .fade-enter-from, .fade-leave-to { opacity: 0; }
     </style>
 </head>
 <body class="bg-[#0b1120] text-gray-200 min-h-screen font-sans">
@@ -23,23 +21,245 @@
         <header class="flex flex-col md:flex-row justify-between items-center mb-8 border-b border-gray-800 pb-6 gap-4">
             <div>
                 <h1 class="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
-                    <i class="fa-solid fa-rocket text-blue-500"></i> Limitless 专属监控
+                    <i class="fa-solid fa-radar text-blue-500"></i> Limitless 专属监控
                 </h1>
                 <div class="flex gap-2 mt-2 text-xs">
-                    <span class="bg-green-900/30 text-green-400 px-2 py-0.5 rounded border border-green-500/30">
-                        <i class="fa-solid fa-key"></i> 密钥已内置
+                    <span class="bg-green-900/30 text-green-400 px-2 py-0.5 rounded border border-green-500/30 font-mono">
+                        Key: ...YA6F6YH
                     </span>
-                    <span class="bg-gray-800 text-gray-400 px-2 py-0.5 rounded border border-gray-700">Etherscan API V2</span>
+                    <span class="bg-blue-900/30 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30">
+                        Etherscan V2 (Base)
+                    </span>
                 </div>
             </div>
-            <div class="flex gap-3">
-                <button @click="fetchData" :disabled="loading" 
-                    class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg shadow-blue-900/50 flex items-center gap-2 disabled:opacity-50 transition">
-                    <i class="fa-solid fa-rotate" :class="{'fa-spin': loading}"></i>
-                    {{ loading ? '正在连接 Base 链...' : '刷新数据' }}
-                </button>
-            </div>
+            <button @click="fetchData" :disabled="loading" 
+                class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg shadow-blue-900/50 flex items-center gap-2 disabled:opacity-50 transition">
+                <i class="fa-solid fa-rotate" :class="{'fa-spin': loading}"></i>
+                {{ loading ? '正在从 Base 链同步...' : '刷新数据' }}
+            </button>
         </header>
 
+        <div v-if="error" class="bg-red-900/50 border border-red-500 text-red-200 p-6 rounded-xl mb-8 animate-pulse">
+            <h3 class="font-bold text-lg mb-2"><i class="fa-solid fa-bug"></i> 发生错误</h3>
+            <p class="font-mono text-sm bg-black/30 p-3 rounded">{{ error }}</p>
+            <p class="text-sm mt-3 opacity-80">
+                如果是 "Invalid API Key"，说明刚申请的 Key 可能需要几分钟才能生效，请稍等再刷新。
+            </p>
+        </div>
+
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div class="bg-gradient-to-br from-indigo-900/40 to-gray-800 rounded-xl p-5 border border-indigo
+            <div class="bg-gradient-to-br from-indigo-900/40 to-gray-800 rounded-xl p-5 border border-indigo-500/30 relative overflow-hidden group">
+                <div class="absolute right-2 top-2 text-indigo-500/20 text-6xl"><i class="fa-solid fa-user-check"></i></div>
+                <h3 class="text-indigo-400 text-xs font-bold uppercase mb-1">达标人数 (>200U)</h3>
+                <p class="text-4xl font-black text-white">{{ qualifiedCount }}</p>
+                <div class="w-full bg-gray-900 h-1 mt-3 rounded-full overflow-hidden">
+                    <div class="bg-indigo-500 h-full transition-all duration-1000" 
+                         :style="{ width: (userList.length > 0 ? (qualifiedCount / userList.length * 100) : 0) + '%' }"></div>
+                </div>
+            </div>
+
+            <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                <h3 class="text-gray-400 text-xs font-bold uppercase mb-1">USDC 总流水</h3>
+                <p class="text-3xl font-bold text-blue-400">${{ formatNum(totalVolume) }}</p>
+            </div>
+
+            <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
+                <h3 class="text-gray-400 text-xs font-bold uppercase mb-1">总积分池</h3>
+                <p class="text-3xl font-bold text-yellow-400">{{ formatNum(totalVolume * 1) }}</p>
+                <p class="text-xs text-gray-500 mt-2">1 USDC = 1 积分</p>
+            </div>
+
+            <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 flex flex-col justify-center">
+                <div class="relative group">
+                    <i class="fa-solid fa-search absolute left-3 top-3.5 text-gray-500 group-focus-within:text-blue-400 transition"></i>
+                    <input v-model="search" type="text" placeholder="输入钱包地址过滤..." 
+                        class="w-full bg-gray-900 border border-gray-600 rounded-lg pl-10 py-2 text-white text-sm focus:border-blue-500 outline-none transition font-mono">
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-2xl min-h-[400px]">
+            <div class="p-4 bg-gray-900/80 border-b border-gray-700 flex justify-between items-center backdrop-blur">
+                <h3 class="font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-list-ol text-blue-500"></i> 交易量排行 (Top 100)
+                </h3>
+                <span class="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">实时数据</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-gray-900 text-gray-400 text-xs uppercase">
+                        <tr>
+                            <th class="p-4 w-16 text-center">排名</th>
+                            <th class="p-4">用户地址</th>
+                            <th class="p-4 text-right">交易量 (USDC)</th>
+                            <th class="p-4 text-right">积分</th>
+                            <th class="p-4 text-center w-32">状态</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700">
+                        <tr v-for="(user, i) in filteredUsers.slice(0, 100)" :key="user.address" 
+                            class="hover:bg-gray-700/50 transition group" 
+                            :class="{'bg-blue-900/20': search && user.address.toLowerCase().includes(search.toLowerCase())}">
+                            
+                            <td class="p-4 text-center font-mono text-gray-500">
+                                <span v-if="i<3" :class="i===0?'text-yellow-400':(i===1?'text-gray-300':'text-orange-400')">
+                                    <i class="fa-solid fa-trophy"></i>
+                                </span>
+                                <span v-else>{{ i + 1 }}</span>
+                            </td>
+                            
+                            <td class="p-4 font-mono text-gray-300">
+                                <div class="flex items-center gap-2">
+                                    {{ user.address }}
+                                    <span v-if="search && user.address.toLowerCase().includes(search.toLowerCase())" 
+                                          class="bg-blue-600 text-[10px] px-1.5 py-0.5 rounded text-white font-bold">YOU</span>
+                                </div>
+                            </td>
+                            
+                            <td class="p-4 text-right font-mono font-bold" :class="user.isQualified ? 'text-white' : 'text-gray-500'">
+                                ${{ formatNum(user.volume) }}
+                            </td>
+                            
+                            <td class="p-4 text-right font-mono text-yellow-500/90">{{ formatNum(user.points) }}</td>
+                            
+                            <td class="p-4 text-center">
+                                <span v-if="user.isQualified" class="bg-green-500/20 text-green-400 px-2 py-1 rounded text-xs font-bold border border-green-500/30 flex items-center justify-center gap-1">
+                                    <i class="fa-solid fa-check"></i> 达标
+                                </span>
+                                <span v-else class="text-gray-600 text-xs">
+                                    差 {{ formatNum(200 - user.volume) }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr v-if="filteredUsers.length === 0">
+                            <td colspan="5" class="p-12 text-center text-gray-500">
+                                <div class="flex flex-col items-center gap-3">
+                                    <div v-if="loading" class="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                                    <div v-else>
+                                        <i class="fa-solid fa-inbox text-4xl mb-2 opacity-50 block"></i>
+                                        <span>暂无数据 (请检查API连接)</span>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                // ==========================================
+                // 🔑 你的密钥 (已内置)
+                // ==========================================
+                const API_KEY = "P1R1NYGZ3YV7DGUCFP8J8J34994YA6F6YH"; 
+                // ==========================================
+
+                // 配置参数
+                const CHAIN_ID = 8453; // Base Network ID
+                const LIMITLESS_CONTRACT = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
+                const USDC_CONTRACT = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
+                const loading = ref(false);
+                const error = ref('');
+                const rawData = ref([]);
+                const search = ref('');
+
+                // 数据处理
+                const userList = computed(() => {
+                    const stats = {};
+                    rawData.value.forEach(tx => {
+                        const val = parseFloat(tx.value);
+                        if(val <= 0) return;
+
+                        // USDC 精度 6
+                        const amount = val / 1000000;
+                        const target = LIMITLESS_CONTRACT.toLowerCase();
+                        let user = null;
+
+                        // 双向统计：入金和出金都算 Volume
+                        if (tx.to.toLowerCase() === target) user = tx.from;
+                        else if (tx.from.toLowerCase() === target) user = tx.to;
+
+                        if (user) {
+                            if (!stats[user]) stats[user] = 0;
+                            stats[user] += amount;
+                        }
+                    });
+
+                    // 转数组并排序
+                    return Object.keys(stats).map(addr => ({
+                        address: addr,
+                        volume: stats[addr],
+                        points: Math.floor(stats[addr] * 1), // 1分/U
+                        isQualified: stats[addr] >= 200
+                    })).sort((a, b) => b.volume - a.volume);
+                });
+
+                const qualifiedCount = computed(() => userList.value.filter(u => u.isQualified).length);
+                const totalVolume = computed(() => userList.value.reduce((sum, u) => sum + u.volume, 0));
+                
+                const filteredUsers = computed(() => {
+                    if (!search.value) return userList.value;
+                    return userList.value.filter(u => u.address.toLowerCase().includes(search.value.toLowerCase()));
+                });
+
+                const formatNum = (n) => n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+
+                // 核心获取逻辑 (Etherscan V2)
+                const fetchData = async () => {
+                    loading.value = true;
+                    error.value = '';
+
+                    try {
+                        // 使用 V2 接口结构
+                        const baseUrl = "https://api.etherscan.io/v2/api";
+                        const params = new URLSearchParams({
+                            chainid: CHAIN_ID,
+                            module: 'account',
+                            action: 'tokentx',
+                            contractaddress: USDC_CONTRACT,
+                            address: LIMITLESS_CONTRACT,
+                            page: 1,
+                            offset: 2000,
+                            sort: 'desc',
+                            apikey: API_KEY
+                        });
+
+                        const res = await fetch(`${baseUrl}?${params.toString()}`);
+                        const data = await res.json();
+
+                        if (data.status === "1") {
+                            rawData.value = data.result;
+                        } else if (data.message === "No transactions found") {
+                            rawData.value = [];
+                        } else {
+                            // 抛出具体错误供诊断
+                            throw new Error(data.result || data.message || "API 响应未知错误");
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        error.value = e.message;
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                onMounted(() => {
+                    fetchData();
+                });
+
+                return {
+                    loading, error, search,
+                    userList, qualifiedCount, totalVolume, filteredUsers,
+                    formatNum, fetchData
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
