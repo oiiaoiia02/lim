@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Limitless S2 监控 (本地极速版)</title>
+    <title>Limitless S2 监控 (公共通道版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.3.4/vue.global.prod.min.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <style>
         [v-cloak] { display: none; }
@@ -24,8 +24,8 @@
                     <i class="fa-solid fa-crown text-yellow-500"></i> Limitless <span class="text-blue-500">Season 2</span>
                 </h1>
                 <div class="flex flex-wrap gap-2 mt-2 text-xs">
-                    <span class="bg-blue-900/30 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30 font-mono">
-                        Key: ...YA6F6YH
+                    <span class="bg-green-900/30 text-green-400 px-2 py-0.5 rounded border border-green-500/30 font-mono flex items-center gap-1">
+                        <i class="fa-solid fa-wifi"></i> 公共免Key通道
                     </span>
                     <span class="bg-purple-900/30 text-purple-400 px-2 py-0.5 rounded border border-purple-500/30 font-mono">
                         Base Chain (8453)
@@ -36,26 +36,32 @@
                 <button @click="fetchData" :disabled="loading" 
                     class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-lg flex items-center gap-2 disabled:opacity-50">
                     <i class="fa-solid fa-rotate" :class="{'fa-spin': loading}"></i>
-                    {{ loading ? '数据拉取中...' : '刷新数据' }}
+                    {{ loading ? '获取数据中...' : '刷新' }}
                 </button>
             </div>
         </header>
+
+        <div v-if="debugMsg" class="mb-6 p-4 rounded-xl border text-sm font-mono whitespace-pre-wrap" 
+             :class="isError ? 'bg-red-900/20 border-red-500/50 text-red-300' : 'bg-blue-900/20 border-blue-500/50 text-blue-300'">
+            <i class="fa-solid fa-terminal mr-2"></i>{{ debugMsg }}
+        </div>
 
         <div class="bg-gray-800/50 rounded-2xl p-6 border border-gray-700 mb-8 backdrop-blur-sm">
             <div class="flex flex-col md:flex-row items-end gap-6">
                 <div class="flex-1 w-full">
                     <label class="text-xs font-bold text-yellow-500 uppercase mb-2 block">
-                        S2 赛季总交易量 (Dune 对齐用)
+                        <i class="fa-solid fa-database mr-1"></i> Dune 官网 S2 总交易量
                     </label>
                     <div class="relative">
                         <span class="absolute left-4 top-3 text-gray-400">$</span>
                         <input v-model.number="config.duneTotal" type="number" 
-                            class="w-full bg-gray-900 border border-gray-600 rounded-xl py-2 pl-8 pr-4 text-white focus:border-yellow-500 outline-none">
+                            class="w-full bg-gray-900 border border-gray-600 rounded-xl py-2 pl-8 pr-4 text-white focus:border-yellow-500 outline-none transition placeholder-gray-600"
+                            placeholder="在此输入 Dune 的数值，用于计算占比...">
                     </div>
                 </div>
                 <div class="w-full md:w-64">
                     <label class="text-xs font-bold text-blue-400 uppercase mb-2 block">
-                        积分汇率 (1 USDC)
+                        <i class="fa-solid fa-percent mr-1"></i> 积分汇率 (1 USDC)
                     </label>
                     <input v-model.number="config.pointRate" type="number" step="0.1" 
                         class="w-full bg-gray-900 border border-gray-600 rounded-xl py-2 px-4 text-white focus:border-blue-500 outline-none"
@@ -68,27 +74,30 @@
             <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
                 <h3 class="text-gray-400 text-xs font-bold uppercase mb-1">达标人数 (>200U)</h3>
                 <p class="text-3xl font-bold text-white">{{ qualifiedCount }}</p>
+                <p class="text-xs text-gray-500 mt-1">基于最新 100 笔交易</p>
             </div>
             <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
-                <h3 class="text-gray-400 text-xs font-bold uppercase mb-1">本次扫描量</h3>
+                <h3 class="text-gray-400 text-xs font-bold uppercase mb-1">本次扫描交易量</h3>
                 <p class="text-3xl font-bold text-blue-400">${{ formatNum(capturedVolume) }}</p>
-                <p class="text-xs text-gray-500 mt-1">占 Dune: {{ dunePercentage }}%</p>
+                <p class="text-xs text-gray-500 mt-1">占 Dune 总量的 <span class="text-yellow-400">{{ dunePercentage }}%</span></p>
             </div>
             <div class="bg-gray-800 rounded-xl p-5 border border-gray-700">
                 <h3 class="text-gray-400 text-xs font-bold uppercase mb-1">预估积分</h3>
                 <p class="text-3xl font-bold text-yellow-400">{{ formatNum(capturedVolume * config.pointRate) }}</p>
             </div>
             <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 flex flex-col justify-center">
-                <input v-model="search" type="text" placeholder="搜索地址..." 
-                    class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2 text-white text-sm outline-none">
+                <div class="relative">
+                    <i class="fa-solid fa-search absolute left-3 top-3 text-gray-500"></i>
+                    <input v-model="search" type="text" placeholder="输入钱包地址..." 
+                        class="w-full bg-gray-900 border border-gray-600 rounded-lg py-2 pl-9 pr-4 text-white text-sm outline-none focus:border-blue-500">
+                </div>
             </div>
         </div>
 
-        <div v-if="error" class="bg-red-900/50 border border-red-500 text-red-200 p-4 rounded-xl mb-6">
-            <p class="font-bold">提示: {{ error }}</p>
-        </div>
-
         <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-2xl">
+            <div class="p-4 bg-gray-900/50 border-b border-gray-700 font-bold text-white text-sm">
+                实时活跃用户榜单
+            </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-sm">
                     <thead class="bg-gray-900 text-gray-400 text-xs uppercase sticky top-0">
@@ -97,15 +106,15 @@
                             <th class="p-4">用户地址</th>
                             <th class="p-4 text-right">交易量 (USDC)</th>
                             <th class="p-4 text-right text-blue-400">积分</th>
-                            <th class="p-4 text-right">Dune占比</th>
+                            <th class="p-4 text-right">全网占比</th>
                             <th class="p-4 text-center w-32">状态</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-700">
-                        <tr v-for="(user, i) in filteredUsers.slice(0, 200)" :key="user.address" 
+                        <tr v-for="(user, i) in filteredUsers.slice(0, 100)" :key="user.address" 
                             class="hover:bg-gray-700/50 transition" 
                             :class="{'bg-blue-900/20': search && user.address.toLowerCase().includes(search.toLowerCase())}">
-                            <td class="p-4 text-center text-gray-500">{{ i + 1 }}</td>
+                            <td class="p-4 text-center text-gray-500 font-mono">{{ i + 1 }}</td>
                             <td class="p-4 font-mono text-gray-300">
                                 {{ user.address }}
                                 <span v-if="search && user.address.toLowerCase().includes(search.toLowerCase())" 
@@ -113,17 +122,18 @@
                             </td>
                             <td class="p-4 text-right font-bold text-white">${{ formatNum(user.volume) }}</td>
                             <td class="p-4 text-right text-blue-400 font-bold">{{ formatNum(user.points) }}</td>
-                            <td class="p-4 text-right text-gray-400">
-                                {{ config.duneTotal > 0 ? ((user.volume / config.duneTotal) * 100).toFixed(4) + '%' : '-' }}
+                            <td class="p-4 text-right text-gray-400 font-mono">
+                                {{ config.duneTotal > 0 ? ((user.volume / config.duneTotal) * 100).toFixed(5) + '%' : '-' }}
                             </td>
                             <td class="p-4 text-center">
-                                <span v-if="user.isQualified" class="text-green-400 font-bold text-xs">✔ 达标</span>
+                                <span v-if="user.isQualified" class="text-green-400 font-bold text-xs bg-green-900/20 px-2 py-1 rounded border border-green-900/50">✔ 达标</span>
                                 <span v-else class="text-gray-600 text-xs">差 {{ formatNum(200 - user.volume) }}</span>
                             </td>
                         </tr>
                         <tr v-if="filteredUsers.length === 0">
                             <td colspan="6" class="p-12 text-center text-gray-500">
-                                {{ loading ? '正在加载...' : '暂无数据' }}
+                                <div v-if="loading" class="animate-pulse">正在连接 Base 链...</div>
+                                <div v-else>暂无数据</div>
                             </td>
                         </tr>
                     </tbody>
@@ -137,19 +147,18 @@
 
         createApp({
             setup() {
-                // 你的 Key (已内置)
-                const API_KEY = "P1R1NYGZ3YV7DGUCFP8J8J34994YA6F6YH"; 
-                const CHAIN_ID = 8453;
-                const CONTRACT = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045";
-                const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+                // 核心配置
+                const CONTRACT = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"; // Limitless Router
+                const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // Base USDC
 
                 const loading = ref(false);
-                const error = ref('');
+                const debugMsg = ref('');
+                const isError = ref(false);
                 const rawData = ref([]);
                 const search = ref('');
 
                 const config = ref({
-                    duneTotal: parseFloat(localStorage.getItem('lm_dune_total')) || 10000000,
+                    duneTotal: parseFloat(localStorage.getItem('lm_dune_total')) || 500000000, // 默认5亿
                     pointRate: parseFloat(localStorage.getItem('lm_rate')) || 1.0,
                     threshold: 200
                 });
@@ -164,15 +173,25 @@
                     rawData.value.forEach(tx => {
                         const val = parseFloat(tx.value);
                         if(val <= 0) return;
+                        
+                        // USDC 精度 6
                         const amount = val / 1000000;
                         const target = CONTRACT.toLowerCase();
                         let user = null;
-                        if (tx.to.toLowerCase() === target) user = tx.from;
-                        else if (tx.from.toLowerCase() === target) user = tx.to;
+
+                        // 简单判断：只看用户 -> Limitless 的入金（视为交易量）
+                        // 这样数据更干净，避免退款/提现混淆
+                        if (tx.to.toLowerCase() === target) {
+                            user = tx.from;
+                        } 
+                        // 如果需要双向，可以把下面这行注释打开
+                        // else if (tx.from.toLowerCase() === target) user = tx.to;
+
                         if (user) {
                             stats[user] = (stats[user] || 0) + amount;
                         }
                     });
+
                     return Object.keys(stats).map(addr => ({
                         address: addr,
                         volume: stats[addr],
@@ -186,7 +205,7 @@
                 
                 const dunePercentage = computed(() => {
                     if(!config.value.duneTotal) return 0;
-                    return ((capturedVolume.value / config.value.duneTotal) * 100).toFixed(2);
+                    return ((capturedVolume.value / config.value.duneTotal) * 100).toFixed(4);
                 });
 
                 const filteredUsers = computed(() => {
@@ -196,41 +215,44 @@
 
                 const formatNum = (n) => n.toLocaleString('en-US', { maximumFractionDigits: 2 });
 
+                // 核心：使用 BaseScan 公共接口 (无 Key)
                 const fetchData = async () => {
                     loading.value = true;
-                    error.value = '';
+                    debugMsg.value = "正在连接 api.basescan.org (公共通道)...";
+                    isError.value = false;
+
                     try {
-                        const url = `https://api.etherscan.io/v2/api?chainid=${CHAIN_ID}&module=account&action=tokentx&contractaddress=${USDC}&address=${CONTRACT}&page=1&offset=5000&sort=desc&apikey=${API_KEY}`;
+                        // 注意：不带 apikey 参数。BaseScan 允许每秒 5 次免费请求。
+                        // offset=100 是为了保证请求快且不超时
+                        const url = `https://api.basescan.org/api?module=account&action=tokentx&contractaddress=${USDC}&address=${CONTRACT}&page=1&offset=100&sort=desc`;
+                        
                         const res = await fetch(url);
                         const data = await res.json();
+
                         if (data.status === "1") {
                             rawData.value = data.result;
+                            debugMsg.value = `成功同步! 获取到最新 ${data.result.length} 笔交易。\n数据源: BaseScan Public API`;
+                        } else if (data.message === "No transactions found") {
+                            rawData.value = [];
+                            debugMsg.value = "连接成功，但暂无新交易。";
                         } else {
-                            throw new Error(data.message);
+                            throw new Error(data.result || data.message);
                         }
                     } catch (e) {
                         console.error(e);
-                        // 备用线路
-                        try {
-                            const backUrl = `https://api.basescan.org/api?module=account&action=tokentx&contractaddress=${USDC}&address=${CONTRACT}&page=1&offset=200&sort=desc`;
-                            const backRes = await fetch(backUrl);
-                            const backData = await backRes.json();
-                            if(backData.status === "1") {
-                                rawData.value = backData.result;
-                                error.value = "已切换至公共线路";
-                            }
-                        } catch(err) {
-                            error.value = "无法连接，请稍后再试";
-                        }
+                        isError.value = true;
+                        debugMsg.value = `连接提示: ${e.message}\n可能是公共接口繁忙，请等待 5 秒后再次点击刷新。`;
                     } finally {
                         loading.value = false;
                     }
                 };
 
-                onMounted(() => { fetchData(); });
+                onMounted(() => {
+                    fetchData();
+                });
 
                 return {
-                    loading, config, search, error,
+                    loading, config, search, debugMsg, isError,
                     userList, qualifiedCount, capturedVolume, dunePercentage, filteredUsers,
                     formatNum, fetchData, saveConfig: () => {}
                 };
